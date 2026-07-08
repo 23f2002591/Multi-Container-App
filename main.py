@@ -1,30 +1,56 @@
 import os
+import redis
 
 from fastapi import FastAPI
-import redis
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-r = redis.Redis(
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+redis_client = redis.Redis(
     host=os.getenv("REDIS_HOST", "redis"),
     port=6379,
     decode_responses=True,
 )
 
+@app.get("/")
+def root():
+    return {"status": "running"}
+
+@app.get("/healthz")
+def healthz():
+    try:
+        redis_client.ping()
+        return {
+            "status": "ok",
+            "redis": "up"
+        }
+    except Exception:
+        return {
+            "status": "error",
+            "redis": "down"
+        }
+
 @app.post("/hit/{key}")
 def hit(key: str):
-    count = r.incr(key)
-    return {"key": key, "count": count}
+    count = redis_client.incr(key)
+    return {
+        "key": key,
+        "count": count
+    }
 
 @app.get("/count/{key}")
 def count(key: str):
-    value = r.get(key)
-    return {"key": key, "count": int(value) if value else 0}
+    value = redis_client.get(key)
 
-@app.get("/healthz")
-def health():
-    try:
-        r.ping()
-        return {"status": "ok", "redis": "up"}
-    except Exception:
-        return {"status": "error", "redis": "down"}
+    return {
+        "key": key,
+        "count": int(value) if value else 0
+    }
